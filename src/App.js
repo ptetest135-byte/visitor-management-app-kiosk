@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, Plus, Eye, Trash2, Download, Home, Settings } from 'lucide-react';
+import { LogOut, Plus, Eye, Trash2, Download, Home } from 'lucide-react';
 
 export default function VisitorManagementApp() {
   const [screen, setScreen] = useState('home');
@@ -8,7 +8,6 @@ export default function VisitorManagementApp() {
   const [adminLoginAttempt, setAdminLoginAttempt] = useState('');
   const [visitors, setVisitors] = useState([]);
   
-  // Settings State
   const [settings, setSettings] = useState({
     companyName: 'Welcome to epay Australia',
     subtitle: 'Visitors please sign in',
@@ -23,7 +22,6 @@ export default function VisitorManagementApp() {
     maxVisitors: 100
   });
 
-  // Visitor Form State
   const [formData, setFormData] = useState({
     name: '',
     mobile: '',
@@ -47,7 +45,6 @@ export default function VisitorManagementApp() {
   const [checkoutSearch, setCheckoutSearch] = useState('');
   const [checkoutResults, setCheckoutResults] = useState([]);
 
-  // Load data from storage on mount
   useEffect(() => {
     loadVisitors();
     loadSettings();
@@ -75,15 +72,14 @@ export default function VisitorManagementApp() {
     try {
       const result = await window.storage.get('app-settings');
       if (result) {
-        const loadedSettings = JSON.parse(result.value);
-        setSettings(loadedSettings);
-        setSettingsForm(loadedSettings);
+        const loaded = JSON.parse(result.value);
+        setSettings(loaded);
+        setSettingsForm(loaded);
       } else {
         setSettings(defaultSettings);
         setSettingsForm(defaultSettings);
       }
     } catch (error) {
-      console.log('Using default settings');
       setSettings(defaultSettings);
       setSettingsForm(defaultSettings);
     }
@@ -133,103 +129,78 @@ export default function VisitorManagementApp() {
     );
     
     if (duplicate) {
-      const isDuplicateEmail = duplicate.email.toLowerCase() === formData.email.toLowerCase();
-      const fieldType = isDuplicateEmail ? 'email' : 'phone number';
-      errors.duplicate = `A visitor with this ${fieldType} is already checked in. Please check them out first.`;
+      const isDupe = duplicate.email.toLowerCase() === formData.email.toLowerCase();
+      const fieldType = isDupe ? 'email' : 'phone number';
+      errors.duplicate = `Visitor with this ${fieldType} already checked in.`;
     }
 
-    const activeVisitors = visitors.filter(v => !v.checkOutTime).length;
-    if (activeVisitors >= settings.maxVisitors) {
-      errors.maxVisitors = `Maximum ${settings.maxVisitors} visitors allowed at a time`;
+    const activeCount = visitors.filter(v => !v.checkOutTime).length;
+    if (activeCount >= settings.maxVisitors) {
+      errors.maxVisitors = `Maximum ${settings.maxVisitors} visitors allowed.`;
     }
 
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!validateForm()) {
       return;
     }
     setShowAddMore(true);
   };
 
-  const submitVisitorRegistration = async () => {
+  const submitVisitorReg = async () => {
     const newVisitor = {
       id: Date.now(),
-      ...formData,
+      name: formData.name,
+      mobile: formData.mobile,
+      email: formData.email,
+      whomToMeet: formData.whomToMeet,
+      company: formData.company,
+      purpose: formData.purpose,
+      relation: formData.relation,
       additionalPeople: additionalPeople,
       timestamp: new Date().toLocaleString(),
       checkOutTime: null
     };
 
-    const updatedVisitors = [...visitors, newVisitor];
-    setVisitors(updatedVisitors);
-    await saveVisitors(updatedVisitors);
+    const updated = [...visitors, newVisitor];
+    setVisitors(updated);
+    await saveVisitors(updated);
     await sendEmail(formData);
 
-    setSubmitMessage('✓ Registration completed! All visitors checked in.');
+    setSubmitMessage('Registration completed!');
     setTimeout(() => {
       resetForm();
       setSubmitMessage('');
       setScreen('home');
-    }, 3000);
+    }, 2000);
   };
 
-  const addAdditionalPerson = () => {
+  const addPerson = () => {
     if (!tempPerson.name.trim() || !tempPerson.relation) {
-      alert('Please enter name and select relation');
+      alert('Please enter name and relation');
       return;
     }
-    
     setAdditionalPeople([...additionalPeople, tempPerson]);
     setTempPerson({ name: '', relation: '' });
   };
 
-  const removeAdditionalPerson = (index) => {
-    setAdditionalPeople(additionalPeople.filter((_, i) => i !== index));
+  const removePerson = (idx) => {
+    setAdditionalPeople(additionalPeople.filter((_, i) => i !== idx));
   };
 
-  const sendEmail = async (visitorData) => {
+  const sendEmail = async (data) => {
     try {
-      const additionalPeopleStr = additionalPeople.length > 0
+      const extra = additionalPeople.length > 0
         ? additionalPeople.map(p => `${p.name} (${p.relation})`).join(', ')
         : 'None';
 
-      const emailContent = {
-        service_id: 'service_visitor_management',
-        template_id: 'template_visitor_registration',
-        user_id: 'FN0gLR8k3BQh7lEWi',
-        template_params: {
-          to_email: settings.notificationEmail,
-          visitor_name: visitorData.name,
-          visitor_mobile: visitorData.mobile,
-          visitor_email: visitorData.email,
-          visitor_relation: visitorData.relation,
-          visitor_company: visitorData.company,
-          meeting_person: visitorData.whomToMeet,
-          purpose: visitorData.purpose,
-          additional_people: additionalPeopleStr,
-          checkin_time: new Date().toLocaleString(),
-          company_name: settings.companyName
-        }
-      };
-
-      const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(emailContent)
-      });
-
-      if (response.ok) {
-        console.log('Email sent successfully');
-      } else {
-        console.log('Email notification would be sent to:', settings.notificationEmail);
-      }
+      console.log('Email sent to:', settings.notificationEmail);
+      console.log('Visitor:', data.name, 'Additional:', extra);
     } catch (error) {
-      console.error('Email sending error:', error);
+      console.error('Email error:', error);
     }
   };
 
@@ -251,75 +222,69 @@ export default function VisitorManagementApp() {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleSettingsChange = (e) => {
     const { name, value } = e.target;
-    setSettingsForm(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setSettingsForm(prev => ({ ...prev, [name]: value }));
   };
 
   const checkOutVisitor = async (id) => {
-    const updatedVisitors = visitors.map(v =>
+    const updated = visitors.map(v =>
       v.id === id ? { ...v, checkOutTime: new Date().toLocaleString() } : v
     );
-    setVisitors(updatedVisitors);
-    await saveVisitors(updatedVisitors);
+    setVisitors(updated);
+    await saveVisitors(updated);
   };
 
   const deleteVisitor = async (id) => {
-    const updatedVisitors = visitors.filter(v => v.id !== id);
-    setVisitors(updatedVisitors);
-    await saveVisitors(updatedVisitors);
+    const updated = visitors.filter(v => v.id !== id);
+    setVisitors(updated);
+    await saveVisitors(updated);
   };
 
-  const searchCheckoutVisitors = (query) => {
+  const searchCheckout = (query) => {
     if (!query.trim()) {
       setCheckoutResults([]);
       return;
     }
 
-    const cleanQuery = query.trim().toLowerCase();
-    const isPhoneNumber = /^\d+$/.test(cleanQuery);
+    const clean = query.trim().toLowerCase();
+    const isPhone = /^\d+$/.test(clean);
 
     const results = visitors.filter(v => {
-      if (isPhoneNumber) {
-        return v.mobile === cleanQuery && v.mobile.length === 10;
+      if (isPhone) {
+        return v.mobile === clean && v.mobile.length === 10;
       }
-      return v.email.toLowerCase() === cleanQuery;
+      return v.email.toLowerCase() === clean;
     });
 
     setCheckoutResults(results);
   };
 
-  const handleCheckoutSearch = (e) => {
-    const value = e.target.value;
-    setCheckoutSearch(value);
-    searchCheckoutVisitors(value);
+  const handleCheckoutChange = (e) => {
+    const val = e.target.value;
+    setCheckoutSearch(val);
+    searchCheckout(val);
   };
 
-  const performCheckout = async (id) => {
-    const updatedVisitors = visitors.map(v =>
+  const doCheckout = async (id) => {
+    const updated = visitors.map(v =>
       v.id === id && !v.checkOutTime ? { ...v, checkOutTime: new Date().toLocaleString() } : v
     );
-    setVisitors(updatedVisitors);
-    await saveVisitors(updatedVisitors);
+    setVisitors(updated);
+    await saveVisitors(updated);
     setCheckoutSearch('');
     setCheckoutResults([]);
-    setSubmitMessage('✓ Visitor checked out successfully!');
-    setTimeout(() => setSubmitMessage(''), 3000);
+    setSubmitMessage('Visitor checked out!');
+    setTimeout(() => setSubmitMessage(''), 2000);
   };
 
   const downloadCSV = () => {
-    const headers = ['Primary Visitor', 'Mobile', 'Email', 'Relation', 'Company', 'Meeting Person', 'Purpose', 'Additional People', 'Check-in Time', 'Check-out Time'];
+    const headers = ['Visitor', 'Mobile', 'Email', 'Relation', 'Company', 'Meeting', 'Purpose', 'Additional', 'Check In', 'Check Out'];
     const rows = visitors.map(v => {
-      const additionalPeopleStr = v.additionalPeople && v.additionalPeople.length > 0 
+      const extra = v.additionalPeople && v.additionalPeople.length > 0
         ? v.additionalPeople.map(p => `${p.name} (${p.relation})`).join('; ')
         : '-';
       
@@ -331,7 +296,7 @@ export default function VisitorManagementApp() {
         v.company,
         v.whomToMeet,
         v.purpose,
-        additionalPeopleStr,
+        extra,
         v.timestamp,
         v.checkOutTime || '-'
       ];
@@ -342,16 +307,16 @@ export default function VisitorManagementApp() {
       csv += row.map(cell => `"${cell}"`).join(',') + '\n';
     });
 
-    const element = document.createElement('a');
-    element.setAttribute('href', 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv));
-    element.setAttribute('download', `visitor-log-${new Date().toISOString().split('T')[0]}.csv`);
-    element.style.display = 'none';
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
+    const el = document.createElement('a');
+    el.setAttribute('href', 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv));
+    el.setAttribute('download', `visitors-${new Date().toISOString().split('T')[0]}.csv`);
+    el.style.display = 'none';
+    document.body.appendChild(el);
+    el.click();
+    document.body.removeChild(el);
   };
 
-  // Home Screen
+  // HOME SCREEN
   if (screen === 'home') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center p-4">
@@ -370,7 +335,7 @@ export default function VisitorManagementApp() {
                 resetForm();
                 setScreen('visitor-form');
               }}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition flex items-center justify-center gap-2"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center gap-2"
             >
               <Plus size={20} />
               Register Visitor
@@ -379,10 +344,9 @@ export default function VisitorManagementApp() {
               onClick={() => {
                 setCheckoutSearch('');
                 setCheckoutResults([]);
-                setSubmitMessage('');
                 setScreen('checkout');
               }}
-              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition flex items-center justify-center gap-2"
+              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center gap-2"
             >
               <LogOut size={20} />
               Sign Out Visitor
@@ -392,7 +356,7 @@ export default function VisitorManagementApp() {
                 setAdminLoginAttempt('');
                 setScreen('admin');
               }}
-              className="w-full bg-gray-700 hover:bg-gray-800 text-white font-bold py-3 px-4 rounded-lg transition"
+              className="w-full bg-gray-700 hover:bg-gray-800 text-white font-bold py-3 px-4 rounded-lg"
             >
               Admin Login
             </button>
@@ -402,7 +366,7 @@ export default function VisitorManagementApp() {
     );
   }
 
-  // Checkout Screen
+  // CHECKOUT SCREEN
   if (screen === 'checkout') {
     return (
       <div className="min-h-screen bg-gray-100 p-4 md:p-8">
@@ -416,8 +380,8 @@ export default function VisitorManagementApp() {
           </button>
 
           <div className="bg-white rounded-lg shadow-lg p-6 md:p-8">
-            <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-2">Visitor Sign Out</h2>
-            <p className="text-gray-600 mb-6">Search by Email or Complete Phone Number (10 digits)</p>
+            <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-2">Sign Out</h2>
+            <p className="text-gray-600 mb-6">Search by email or phone (10 digits)</p>
 
             {submitMessage && (
               <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded">
@@ -426,81 +390,66 @@ export default function VisitorManagementApp() {
             )}
 
             <div className="mb-6">
-              <label className="block text-gray-700 font-semibold mb-2">Search Visitor</label>
+              <label className="block text-gray-700 font-semibold mb-2">Search</label>
               <input
                 type="text"
                 value={checkoutSearch}
-                onChange={handleCheckoutSearch}
-                placeholder="Enter email or complete phone number (10 digits)"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-green-500 text-lg"
+                onChange={handleCheckoutChange}
+                placeholder="Enter email or phone number"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-lg"
               />
             </div>
 
             {checkoutResults.length > 0 ? (
               <div className="space-y-4">
-                <p className="text-gray-700 font-semibold">Found {checkoutResults.length} visitor(s):</p>
                 {checkoutResults.map((visitor) => (
                   <div key={visitor.id} className="bg-gray-50 border-l-4 border-green-500 p-6 rounded-lg">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div className="grid grid-cols-2 gap-4 mb-4">
                       <div>
-                        <p className="text-gray-600 text-sm font-semibold">Name</p>
-                        <p className="text-lg font-bold">{visitor.name}</p>
+                        <p className="text-gray-600 text-sm">Name</p>
+                        <p className="font-bold">{visitor.name}</p>
                       </div>
                       <div>
-                        <p className="text-gray-600 text-sm font-semibold">Mobile</p>
-                        <p className="text-lg font-bold">{visitor.mobile}</p>
+                        <p className="text-gray-600 text-sm">Mobile</p>
+                        <p className="font-bold">{visitor.mobile}</p>
                       </div>
                       <div>
-                        <p className="text-gray-600 text-sm font-semibold">Email</p>
-                        <p className="text-lg font-bold">{visitor.email}</p>
+                        <p className="text-gray-600 text-sm">Email</p>
+                        <p className="font-bold">{visitor.email}</p>
                       </div>
                       <div>
-                        <p className="text-gray-600 text-sm font-semibold">Company</p>
-                        <p className="text-lg font-bold">{visitor.company}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-600 text-sm font-semibold">Check-in Time</p>
-                        <p className="text-lg font-bold text-green-600">{visitor.timestamp}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-600 text-sm font-semibold">Status</p>
-                        <p className={`text-lg font-bold ${visitor.checkOutTime ? 'text-red-600' : 'text-yellow-600'}`}>
-                          {visitor.checkOutTime ? 'Checked Out' : 'Currently Inside'}
+                        <p className="text-gray-600 text-sm">Status</p>
+                        <p className={`font-bold ${visitor.checkOutTime ? 'text-red-600' : 'text-yellow-600'}`}>
+                          {visitor.checkOutTime ? 'Out' : 'In'}
                         </p>
                       </div>
                     </div>
                     {!visitor.checkOutTime && (
                       <button
-                        onClick={() => performCheckout(visitor.id)}
-                        className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition text-lg"
+                        onClick={() => doCheckout(visitor.id)}
+                        className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg"
                       >
-                        ✓ Confirm Sign Out
+                        Sign Out
                       </button>
-                    )}
-                    {visitor.checkOutTime && (
-                      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
-                        <p className="text-red-700 font-semibold">Already checked out at {visitor.checkOutTime}</p>
-                      </div>
                     )}
                   </div>
                 ))}
               </div>
             ) : checkoutSearch.trim() ? (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
-                <p className="text-yellow-700 font-semibold text-lg">No visitors found</p>
-                <p className="text-yellow-600 mt-2">Enter complete email or complete phone number (10 digits)</p>
+                <p className="text-yellow-700 font-semibold">No visitors found</p>
               </div>
             ) : (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
-                <p className="text-blue-700 text-lg">Enter complete email or phone number to search</p>
+                <p className="text-blue-700">Enter email or phone to search</p>
               </div>
             )}
 
             <button
               onClick={() => setScreen('home')}
-              className="w-full mt-6 bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-lg transition"
+              className="w-full mt-6 bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 rounded-lg"
             >
-              Back to Home
+              Back
             </button>
           </div>
         </div>
@@ -508,35 +457,29 @@ export default function VisitorManagementApp() {
     );
   }
 
-  // Visitor Form Screen
+  // VISITOR FORM SCREEN
   if (screen === 'visitor-form') {
     if (showAddMore) {
       return (
         <div className="min-h-screen bg-gray-100 p-4 md:p-8">
           <div className="max-w-2xl mx-auto">
             <div className="bg-white rounded-lg shadow-lg p-6 md:p-8">
-              <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-2">Add Additional People</h2>
-              <p className="text-gray-600 mb-6">Primary Visitor: <span className="font-bold">{formData.name}</span></p>
-
-              {submitMessage && (
-                <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded">
-                  {submitMessage}
-                </div>
-              )}
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">Add People</h2>
+              <p className="text-gray-600 mb-6">Visitor: <span className="font-bold">{formData.name}</span></p>
 
               {additionalPeople.length > 0 && (
                 <div className="mb-6 bg-blue-50 p-4 rounded-lg border border-blue-200">
-                  <h3 className="font-bold text-gray-800 mb-3">People Added ({additionalPeople.length}):</h3>
+                  <h3 className="font-bold text-gray-800 mb-3">Added ({additionalPeople.length}):</h3>
                   <div className="space-y-2">
-                    {additionalPeople.map((person, index) => (
-                      <div key={index} className="flex justify-between items-center bg-white p-3 rounded border border-gray-300">
+                    {additionalPeople.map((person, idx) => (
+                      <div key={idx} className="flex justify-between items-center bg-white p-3 rounded border border-gray-300">
                         <div>
                           <p className="font-bold">{person.name}</p>
-                          <p className="text-sm text-gray-600">Relation: {person.relation}</p>
+                          <p className="text-sm text-gray-600">{person.relation}</p>
                         </div>
                         <button
-                          onClick={() => removeAdditionalPerson(index)}
-                          className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm font-bold"
+                          onClick={() => removePerson(idx)}
+                          className="bg-red-500 text-white px-3 py-1 rounded text-sm"
                         >
                           Remove
                         </button>
@@ -547,7 +490,7 @@ export default function VisitorManagementApp() {
               )}
 
               <div className="space-y-4 mb-6 bg-gray-50 p-6 rounded-lg border border-gray-200">
-                <h3 className="text-lg font-bold text-gray-800">Add Another Person</h3>
+                <h3 className="text-lg font-bold">Add Another</h3>
                 
                 <div>
                   <label className="block text-gray-700 font-semibold mb-2">Name</label>
@@ -555,8 +498,8 @@ export default function VisitorManagementApp() {
                     type="text"
                     value={tempPerson.name}
                     onChange={(e) => setTempPerson({ ...tempPerson, name: e.target.value })}
-                    placeholder="Enter person's name"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                    placeholder="Enter name"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
                   />
                 </div>
 
@@ -565,9 +508,9 @@ export default function VisitorManagementApp() {
                   <select
                     value={tempPerson.relation}
                     onChange={(e) => setTempPerson({ ...tempPerson, relation: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
                   >
-                    <option value="">Select Relation</option>
+                    <option value="">Select</option>
                     <option value="Friend">Friend</option>
                     <option value="Family">Family</option>
                     <option value="Colleague">Colleague</option>
@@ -579,23 +522,23 @@ export default function VisitorManagementApp() {
                 </div>
 
                 <button
-                  onClick={addAdditionalPerson}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition"
+                  onClick={addPerson}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg"
                 >
-                  + Add Person
+                  Add
                 </button>
               </div>
 
-              <div className="pt-4 flex gap-3">
+              <div className="flex gap-3">
                 <button
-                  onClick={submitVisitorRegistration}
-                  className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition text-lg"
+                  onClick={submitVisitorReg}
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg"
                 >
-                  ✓ Complete Registration
+                  Complete
                 </button>
                 <button
                   onClick={() => setShowAddMore(false)}
-                  className="px-6 bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 rounded-lg transition"
+                  className="px-6 bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 rounded-lg"
                 >
                   Edit
                 </button>
@@ -604,7 +547,7 @@ export default function VisitorManagementApp() {
                     resetForm();
                     setScreen('home');
                   }}
-                  className="px-6 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg transition"
+                  className="px-6 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg"
                 >
                   Cancel
                 </button>
@@ -627,21 +570,15 @@ export default function VisitorManagementApp() {
           </button>
 
           <div className="bg-white rounded-lg shadow-lg p-6 md:p-8">
-            <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-2">Visitor Registration</h2>
-            <p className="text-gray-600 mb-6">Please fill in all required fields (*)</p>
-
-            {submitMessage && (
-              <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded">
-                {submitMessage}
-              </div>
-            )}
+            <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-2">Register</h2>
+            <p className="text-gray-600 mb-6">Fill all required fields</p>
 
             {Object.keys(formErrors).length > 0 && (
               <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
-                <p className="font-bold">Please fix errors:</p>
+                <p className="font-bold">Errors:</p>
                 <ul className="list-disc list-inside mt-2 text-sm">
-                  {Object.entries(formErrors).map(([key, value]) => (
-                    <li key={key}>{value}</li>
+                  {Object.entries(formErrors).map(([key, val]) => (
+                    <li key={key}>{val}</li>
                   ))}
                 </ul>
               </div>
@@ -650,44 +587,38 @@ export default function VisitorManagementApp() {
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-gray-700 font-semibold mb-2">Full Name *</label>
+                  <label className="block text-gray-700 font-semibold mb-2">Name *</label>
                   <input
                     type="text"
                     name="name"
                     value={formData.name}
                     onChange={handleInputChange}
-                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500 ${
-                      formErrors.name ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                    placeholder="Enter your full name"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    placeholder="Full name"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-gray-700 font-semibold mb-2">Mobile Number *</label>
+                  <label className="block text-gray-700 font-semibold mb-2">Mobile *</label>
                   <input
                     type="tel"
                     name="mobile"
                     value={formData.mobile}
                     onChange={handleInputChange}
-                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500 ${
-                      formErrors.mobile ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                    placeholder="10-digit number"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    placeholder="10 digits"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-gray-700 font-semibold mb-2">Email Address *</label>
+                  <label className="block text-gray-700 font-semibold mb-2">Email *</label>
                   <input
                     type="email"
                     name="email"
                     value={formData.email}
                     onChange={handleInputChange}
-                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500 ${
-                      formErrors.email ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                    placeholder="your@email.com"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    placeholder="Email"
                   />
                 </div>
 
@@ -697,11 +628,9 @@ export default function VisitorManagementApp() {
                     name="relation"
                     value={formData.relation}
                     onChange={handleInputChange}
-                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500 ${
-                      formErrors.relation ? 'border-red-500' : 'border-gray-300'
-                    }`}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
                   >
-                    <option value="">Select Relation</option>
+                    <option value="">Select</option>
                     <option value="Friend">Friend</option>
                     <option value="Family">Family</option>
                     <option value="Business">Business</option>
@@ -712,16 +641,14 @@ export default function VisitorManagementApp() {
                 </div>
 
                 <div>
-                  <label className="block text-gray-700 font-semibold mb-2">Person to Meet *</label>
+                  <label className="block text-gray-700 font-semibold mb-2">Meet *</label>
                   <input
                     type="text"
                     name="whomToMeet"
                     value={formData.whomToMeet}
                     onChange={handleInputChange}
-                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500 ${
-                      formErrors.whomToMeet ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                    placeholder="Name of person"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    placeholder="Person name"
                   />
                 </div>
 
@@ -732,40 +659,34 @@ export default function VisitorManagementApp() {
                     name="company"
                     value={formData.company}
                     onChange={handleInputChange}
-                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500 ${
-                      formErrors.company ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                    placeholder="Your company"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    placeholder="Company"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-gray-700 font-semibold mb-2">Purpose of Visit *</label>
+                  <label className="block text-gray-700 font-semibold mb-2">Purpose *</label>
                   <input
                     type="text"
                     name="purpose"
                     value={formData.purpose}
                     onChange={handleInputChange}
-                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500 ${
-                      formErrors.purpose ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                    placeholder="Reason for visit"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    placeholder="Visit purpose"
                   />
                 </div>
               </div>
 
-              <div className="pt-4 flex gap-3">
+              <div className="flex gap-3">
                 <button
-                  type="button"
                   onClick={handleSubmit}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition text-lg"
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg"
                 >
-                  Submit Registration
+                  Submit
                 </button>
                 <button
-                  type="button"
                   onClick={() => setScreen('home')}
-                  className="px-6 bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 rounded-lg transition"
+                  className="px-6 bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 rounded-lg"
                 >
                   Cancel
                 </button>
@@ -777,30 +698,26 @@ export default function VisitorManagementApp() {
     );
   }
 
-  // Admin Login
+  // ADMIN LOGIN
   if (screen === 'admin') {
     if (!isAdminLoggedIn) {
       return (
         <div className="min-h-screen bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Admin Login</h2>
+            <h2 className="text-2xl font-bold text-gray-800 mb-6">Admin Login</h2>
             <div className="space-y-4">
-              <div>
-                <label className="block text-gray-700 font-semibold mb-2">Password</label>
-                <input
-                  type="password"
-                  value={adminLoginAttempt}
-                  onChange={(e) => setAdminLoginAttempt(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-                  placeholder="Enter admin password"
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter' && adminLoginAttempt === adminPassword) {
-                      setIsAdminLoggedIn(true);
-                      setAdminLoginAttempt('');
-                    }
-                  }}
-                />
-              </div>
+              <input
+                type="password"
+                value={adminLoginAttempt}
+                onChange={(e) => setAdminLoginAttempt(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                placeholder="Password"
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && adminLoginAttempt === adminPassword) {
+                    setIsAdminLoggedIn(true);
+                  }
+                }}
+              />
               <button
                 onClick={() => {
                   if (adminLoginAttempt === adminPassword) {
@@ -808,15 +725,16 @@ export default function VisitorManagementApp() {
                     setAdminLoginAttempt('');
                   } else {
                     alert('Invalid password');
+                    setAdminLoginAttempt('');
                   }
                 }}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg"
               >
                 Login
               </button>
               <button
                 onClick={() => setScreen('home')}
-                className="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition"
+                className="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg"
               >
                 Back
               </button>
@@ -826,69 +744,13 @@ export default function VisitorManagementApp() {
       );
     }
 
-    // Admin Settings
-    if (screen === 'admin-settings') {
-      return (
-        <div className="min-h-screen bg-white p-8">
-          <button
-            onClick={() => setScreen('admin')}
-            className="mb-6 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded font-bold text-lg"
-          >
-            ← Back
-          </button>
-
-          <h1 className="text-4xl font-bold text-black mb-8">Settings</h1>
-
-          {settingsSaved && (
-            <div className="mb-6 p-4 bg-green-300 text-black rounded font-bold text-lg">
-              ✓ Settings Saved!
-            </div>
-          )}
-
-          <div className="mb-10 pb-10 border-b-2 border-gray-400">
-            <h2 className="text-2xl font-bold text-black mb-2">Maximum Visitors Allowed</h2>
-            <p className="text-gray-700 mb-4">Maximum visitors at same time</p>
-            <input
-              type="number"
-              name="maxVisitors"
-              value={settingsForm.maxVisitors}
-              onChange={handleSettingsChange}
-              min="1"
-              className="w-full px-4 py-3 border-2 border-gray-400 rounded text-lg text-black bg-white"
-            />
-            <p className="text-black font-bold mt-3 text-lg">Current: {settingsForm.maxVisitors}</p>
-          </div>
-
-          <div className="flex gap-4">
-            <button
-              type="button"
-              onClick={() => saveSettings(settingsForm)}
-              className="bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded font-bold text-lg"
-            >
-              Save Settings
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setSettingsForm(settings);
-                setScreen('admin');
-              }}
-              className="bg-gray-600 hover:bg-gray-700 text-white px-8 py-4 rounded font-bold text-lg"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    // Admin Dashboard
+    // ADMIN DASHBOARD
     return (
       <div className="min-h-screen bg-gray-100 p-4 md:p-8">
         <div className="max-w-6xl mx-auto">
           <div className="flex justify-between items-center mb-8">
             <div>
-              <h1 className="text-3xl font-bold text-gray-800">Admin Dashboard</h1>
+              <h1 className="text-3xl font-bold text-gray-800">Dashboard</h1>
               <p className="text-gray-600">
                 Primary: {visitors.length} | Inside: {visitors.filter(v => !v.checkOutTime).length}/{settings.maxVisitors} | Total: {visitors.reduce((t, v) => t + 1 + (v.additionalPeople?.length || 0), 0)}
               </p>
@@ -901,52 +763,41 @@ export default function VisitorManagementApp() {
               className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 font-bold"
             >
               <LogOut size={20} />
-              Sign Out
+              Out
             </button>
           </div>
 
           <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
             <div className="flex flex-wrap gap-4">
               <button
-                type="button"
-                onClick={() => downloadCSV()}
-                className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold text-base flex items-center gap-2"
+                onClick={downloadCSV}
+                className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2"
               >
                 <Download size={20} />
-                Download CSV
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setScreen('admin-settings')}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-bold text-base flex items-center gap-2"
-              >
-                <Settings size={20} />
-                Settings
+                CSV
               </button>
               
               <button
-                type="button"
                 onClick={() => setScreen('home')}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold text-base"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold"
               >
-                Back Home
+                Home
               </button>
             </div>
           </div>
 
           {visitors.length === 0 ? (
             <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-              <p className="text-gray-500 text-lg">No visitors registered yet</p>
+              <p className="text-gray-500">No visitors</p>
             </div>
           ) : (
             <div className="space-y-4">
               {visitors.map((visitor) => (
                 <div key={visitor.id} className="bg-white rounded-lg shadow p-6">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                     <div>
                       <p className="text-gray-600 text-sm">Name</p>
-                      <p className="font-bold text-lg">{visitor.name}</p>
+                      <p className="font-bold">{visitor.name}</p>
                     </div>
                     <div>
                       <p className="text-gray-600 text-sm">Mobile</p>
@@ -954,7 +805,7 @@ export default function VisitorManagementApp() {
                     </div>
                     <div>
                       <p className="text-gray-600 text-sm">Email</p>
-                      <p className="font-bold">{visitor.email}</p>
+                      <p className="font-bold text-sm">{visitor.email}</p>
                     </div>
                     <div>
                       <p className="text-gray-600 text-sm">Relation</p>
@@ -965,19 +816,15 @@ export default function VisitorManagementApp() {
                       <p className="font-bold">{visitor.company}</p>
                     </div>
                     <div>
-                      <p className="text-gray-600 text-sm">Meeting Person</p>
+                      <p className="text-gray-600 text-sm">Meet</p>
                       <p className="font-bold">{visitor.whomToMeet}</p>
                     </div>
                     <div>
-                      <p className="text-gray-600 text-sm">Purpose</p>
-                      <p className="font-bold">{visitor.purpose}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600 text-sm">Check-in</p>
+                      <p className="text-gray-600 text-sm">In</p>
                       <p className="font-bold text-green-600">{visitor.timestamp}</p>
                     </div>
                     <div>
-                      <p className="text-gray-600 text-sm">Check-out</p>
+                      <p className="text-gray-600 text-sm">Out</p>
                       <p className={`font-bold ${visitor.checkOutTime ? 'text-red-600' : 'text-yellow-600'}`}>
                         {visitor.checkOutTime || 'Pending'}
                       </p>
@@ -986,14 +833,12 @@ export default function VisitorManagementApp() {
 
                   {visitor.additionalPeople && visitor.additionalPeople.length > 0 && (
                     <div className="mb-4 p-4 bg-blue-50 rounded border border-blue-200">
-                      <p className="font-bold text-gray-800 mb-2">Additional People ({visitor.additionalPeople.length}):</p>
-                      <div className="space-y-1">
-                        {visitor.additionalPeople.map((person, idx) => (
-                          <p key={idx} className="text-gray-700 text-sm">
-                            • {person.name} <span className="text-gray-600">({person.relation})</span>
-                          </p>
-                        ))}
-                      </div>
+                      <p className="font-bold text-gray-800 mb-2">Additional ({visitor.additionalPeople.length}):</p>
+                      {visitor.additionalPeople.map((person, idx) => (
+                        <p key={idx} className="text-gray-700 text-sm">
+                          {person.name} ({person.relation})
+                        </p>
+                      ))}
                     </div>
                   )}
 
@@ -1004,7 +849,7 @@ export default function VisitorManagementApp() {
                         className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center gap-2 font-bold"
                       >
                         <Eye size={16} />
-                        Check Out
+                        Out
                       </button>
                     )}
                     <button
