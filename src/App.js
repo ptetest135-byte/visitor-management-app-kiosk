@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, Plus, Eye, Trash2, Download, Home, Settings, Mail } from 'lucide-react';
+import { LogOut, Plus, Eye, Trash2, Download, Home, Settings } from 'lucide-react';
 
 export default function VisitorManagementApp() {
   const [screen, setScreen] = useState('home');
@@ -12,16 +12,16 @@ export default function VisitorManagementApp() {
   const [settings, setSettings] = useState({
     companyName: 'Welcome to epay Australia',
     subtitle: 'Visitors please sign in',
-    notificationEmail: 'ptetest135@gmail.com'
+    notificationEmail: 'ptetest135@gmail.com',
+    maxVisitors: 100
   });
   
   const [settingsForm, setSettingsForm] = useState({
     companyName: 'Welcome to epay Australia',
     subtitle: 'Visitors please sign in',
-    notificationEmail: 'ptetest135@gmail.com'
+    notificationEmail: 'ptetest135@gmail.com',
+    maxVisitors: 100
   });
-  
-  const [settingsSaved, setSettingsSaved] = useState(false);
 
   // Visitor Form State
   const [formData, setFormData] = useState({
@@ -30,11 +30,20 @@ export default function VisitorManagementApp() {
     email: '',
     whomToMeet: '',
     company: '',
-    purpose: ''
+    purpose: '',
+    relation: ''
+  });
+  
+  const [additionalPeople, setAdditionalPeople] = useState([]);
+  const [showAddMore, setShowAddMore] = useState(false);
+  const [tempPerson, setTempPerson] = useState({
+    name: '',
+    relation: ''
   });
   
   const [formErrors, setFormErrors] = useState({});
   const [submitMessage, setSubmitMessage] = useState('');
+  const [settingsSaved, setSettingsSaved] = useState(false);
   const [checkoutSearch, setCheckoutSearch] = useState('');
   const [checkoutResults, setCheckoutResults] = useState([]);
 
@@ -56,16 +65,27 @@ export default function VisitorManagementApp() {
   };
 
   const loadSettings = async () => {
+    const defaultSettings = {
+      companyName: 'Welcome to epay Australia',
+      subtitle: 'Visitors please sign in',
+      notificationEmail: 'ptetest135@gmail.com',
+      maxVisitors: 100
+    };
+    
     try {
       const result = await window.storage.get('app-settings');
       if (result) {
         const loadedSettings = JSON.parse(result.value);
         setSettings(loadedSettings);
         setSettingsForm(loadedSettings);
+      } else {
+        setSettings(defaultSettings);
+        setSettingsForm(defaultSettings);
       }
     } catch (error) {
       console.log('Using default settings');
-      setSettingsForm(settings);
+      setSettings(defaultSettings);
+      setSettingsForm(defaultSettings);
     }
   };
 
@@ -85,7 +105,6 @@ export default function VisitorManagementApp() {
       setTimeout(() => setSettingsSaved(false), 3000);
     } catch (error) {
       console.error('Error saving settings:', error);
-      alert('Error saving settings');
     }
   };
 
@@ -104,13 +123,79 @@ export default function VisitorManagementApp() {
     if (!formData.whomToMeet.trim()) errors.whomToMeet = 'Person to meet is required';
     if (!formData.company.trim()) errors.company = 'Company is required';
     if (!formData.purpose.trim()) errors.purpose = 'Purpose is required';
+    if (!formData.relation.trim()) errors.relation = 'Relation is required';
+
+    const duplicate = visitors.find(v => 
+      !v.checkOutTime && (
+        v.email.toLowerCase() === formData.email.toLowerCase() ||
+        v.mobile === formData.mobile
+      )
+    );
+    
+    if (duplicate) {
+      const isDuplicateEmail = duplicate.email.toLowerCase() === formData.email.toLowerCase();
+      const fieldType = isDuplicateEmail ? 'email' : 'phone number';
+      errors.duplicate = `A visitor with this ${fieldType} is already checked in. Please check them out first.`;
+    }
+
+    const activeVisitors = visitors.filter(v => !v.checkOutTime).length;
+    if (activeVisitors >= settings.maxVisitors) {
+      errors.maxVisitors = `Maximum ${settings.maxVisitors} visitors allowed at a time`;
+    }
 
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
+  const handleSubmit = async () => {
+    if (!validateForm()) {
+      return;
+    }
+    setShowAddMore(true);
+  };
+
+  const submitVisitorRegistration = async () => {
+    const newVisitor = {
+      id: Date.now(),
+      ...formData,
+      additionalPeople: additionalPeople,
+      timestamp: new Date().toLocaleString(),
+      checkOutTime: null
+    };
+
+    const updatedVisitors = [...visitors, newVisitor];
+    setVisitors(updatedVisitors);
+    await saveVisitors(updatedVisitors);
+    await sendEmail(formData);
+
+    setSubmitMessage('✓ Registration completed! All visitors checked in.');
+    setTimeout(() => {
+      resetForm();
+      setSubmitMessage('');
+      setScreen('home');
+    }, 3000);
+  };
+
+  const addAdditionalPerson = () => {
+    if (!tempPerson.name.trim() || !tempPerson.relation) {
+      alert('Please enter name and select relation');
+      return;
+    }
+    
+    setAdditionalPeople([...additionalPeople, tempPerson]);
+    setTempPerson({ name: '', relation: '' });
+  };
+
+  const removeAdditionalPerson = (index) => {
+    setAdditionalPeople(additionalPeople.filter((_, i) => i !== index));
+  };
+
   const sendEmail = async (visitorData) => {
     try {
+      const additionalPeopleStr = additionalPeople.length > 0
+        ? additionalPeople.map(p => `${p.name} (${p.relation})`).join(', ')
+        : 'None';
+
       const emailContent = {
         service_id: 'service_visitor_management',
         template_id: 'template_visitor_registration',
@@ -120,15 +205,16 @@ export default function VisitorManagementApp() {
           visitor_name: visitorData.name,
           visitor_mobile: visitorData.mobile,
           visitor_email: visitorData.email,
+          visitor_relation: visitorData.relation,
           visitor_company: visitorData.company,
           meeting_person: visitorData.whomToMeet,
           purpose: visitorData.purpose,
+          additional_people: additionalPeopleStr,
           checkin_time: new Date().toLocaleString(),
           company_name: settings.companyName
         }
       };
 
-      // Using EmailJS to send email
       const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
         method: 'POST',
         headers: {
@@ -138,45 +224,13 @@ export default function VisitorManagementApp() {
       });
 
       if (response.ok) {
-        console.log('Email sent successfully to:', settings.notificationEmail);
+        console.log('Email sent successfully');
       } else {
-        // Fallback: Log to console if email fails
         console.log('Email notification would be sent to:', settings.notificationEmail);
-        console.log('Visitor Details:', visitorData);
       }
     } catch (error) {
       console.error('Email sending error:', error);
-      // Fallback notification
-      console.log('Visitor check-in details:', visitorData);
     }
-  };
-
-  const handleSubmit = async () => {
-    if (!validateForm()) {
-      setSubmitMessage('');
-      return;
-    }
-
-    const newVisitor = {
-      id: Date.now(),
-      ...formData,
-      timestamp: new Date().toLocaleString(),
-      checkOutTime: null
-    };
-
-    const updatedVisitors = [...visitors, newVisitor];
-    setVisitors(updatedVisitors);
-    await saveVisitors(updatedVisitors);
-
-    // Send email
-    await sendEmail(formData);
-
-    setSubmitMessage('✓ Visitor registered successfully! Email sent. Check-in complete.');
-    setTimeout(() => {
-      resetForm();
-      setSubmitMessage('');
-      setScreen('home');
-    }, 3000);
   };
 
   const resetForm = () => {
@@ -186,8 +240,12 @@ export default function VisitorManagementApp() {
       email: '',
       whomToMeet: '',
       company: '',
-      purpose: ''
+      purpose: '',
+      relation: ''
     });
+    setAdditionalPeople([]);
+    setShowAddMore(false);
+    setTempPerson({ name: '', relation: '' });
     setFormErrors({});
   };
 
@@ -227,11 +285,15 @@ export default function VisitorManagementApp() {
       return;
     }
 
-    const results = visitors.filter(v => 
-      v.name.toLowerCase().includes(query.toLowerCase()) ||
-      v.mobile.includes(query) ||
-      v.email.toLowerCase().includes(query.toLowerCase())
-    );
+    const cleanQuery = query.trim().toLowerCase();
+    const isPhoneNumber = /^\d+$/.test(cleanQuery);
+
+    const results = visitors.filter(v => {
+      if (isPhoneNumber) {
+        return v.mobile === cleanQuery && v.mobile.length === 10;
+      }
+      return v.email.toLowerCase() === cleanQuery;
+    });
 
     setCheckoutResults(results);
   };
@@ -255,17 +317,25 @@ export default function VisitorManagementApp() {
   };
 
   const downloadCSV = () => {
-    const headers = ['Name', 'Mobile', 'Email', 'Company', 'Meeting Person', 'Purpose', 'Check-in Time', 'Check-out Time'];
-    const rows = visitors.map(v => [
-      v.name,
-      v.mobile,
-      v.email,
-      v.company,
-      v.whomToMeet,
-      v.purpose,
-      v.timestamp,
-      v.checkOutTime || '-'
-    ]);
+    const headers = ['Primary Visitor', 'Mobile', 'Email', 'Relation', 'Company', 'Meeting Person', 'Purpose', 'Additional People', 'Check-in Time', 'Check-out Time'];
+    const rows = visitors.map(v => {
+      const additionalPeopleStr = v.additionalPeople && v.additionalPeople.length > 0 
+        ? v.additionalPeople.map(p => `${p.name} (${p.relation})`).join('; ')
+        : '-';
+      
+      return [
+        v.name,
+        v.mobile,
+        v.email,
+        v.relation,
+        v.company,
+        v.whomToMeet,
+        v.purpose,
+        additionalPeopleStr,
+        v.timestamp,
+        v.checkOutTime || '-'
+      ];
+    });
 
     let csv = headers.join(',') + '\n';
     rows.forEach(row => {
@@ -347,7 +417,7 @@ export default function VisitorManagementApp() {
 
           <div className="bg-white rounded-lg shadow-lg p-6 md:p-8">
             <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-2">Visitor Sign Out</h2>
-            <p className="text-gray-600 mb-6">Search by Name, Mobile Number, or Email</p>
+            <p className="text-gray-600 mb-6">Search by Email or Complete Phone Number (10 digits)</p>
 
             {submitMessage && (
               <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded">
@@ -356,14 +426,12 @@ export default function VisitorManagementApp() {
             )}
 
             <div className="mb-6">
-              <label className="block text-gray-700 font-semibold mb-2">
-                Search Visitor
-              </label>
+              <label className="block text-gray-700 font-semibold mb-2">Search Visitor</label>
               <input
                 type="text"
                 value={checkoutSearch}
                 onChange={handleCheckoutSearch}
-                placeholder="Enter name, mobile, or email"
+                placeholder="Enter email or complete phone number (10 digits)"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-green-500 text-lg"
               />
             </div>
@@ -397,7 +465,7 @@ export default function VisitorManagementApp() {
                       <div>
                         <p className="text-gray-600 text-sm font-semibold">Status</p>
                         <p className={`text-lg font-bold ${visitor.checkOutTime ? 'text-red-600' : 'text-yellow-600'}`}>
-                          {visitor.checkOutTime ? `Checked Out` : 'Currently Inside'}
+                          {visitor.checkOutTime ? 'Checked Out' : 'Currently Inside'}
                         </p>
                       </div>
                     </div>
@@ -419,12 +487,12 @@ export default function VisitorManagementApp() {
               </div>
             ) : checkoutSearch.trim() ? (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
-                <p className="text-yellow-700 font-semibold text-lg">No visitors found matching your search</p>
-                <p className="text-yellow-600 mt-2">Please check the name, mobile number, or email and try again</p>
+                <p className="text-yellow-700 font-semibold text-lg">No visitors found</p>
+                <p className="text-yellow-600 mt-2">Enter complete email or complete phone number (10 digits)</p>
               </div>
             ) : (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
-                <p className="text-blue-700 text-lg">Enter a name, mobile number, or email to search</p>
+                <p className="text-blue-700 text-lg">Enter complete email or phone number to search</p>
               </div>
             )}
 
@@ -442,6 +510,111 @@ export default function VisitorManagementApp() {
 
   // Visitor Form Screen
   if (screen === 'visitor-form') {
+    if (showAddMore) {
+      return (
+        <div className="min-h-screen bg-gray-100 p-4 md:p-8">
+          <div className="max-w-2xl mx-auto">
+            <div className="bg-white rounded-lg shadow-lg p-6 md:p-8">
+              <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-2">Add Additional People</h2>
+              <p className="text-gray-600 mb-6">Primary Visitor: <span className="font-bold">{formData.name}</span></p>
+
+              {submitMessage && (
+                <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded">
+                  {submitMessage}
+                </div>
+              )}
+
+              {additionalPeople.length > 0 && (
+                <div className="mb-6 bg-blue-50 p-4 rounded-lg border border-blue-200">
+                  <h3 className="font-bold text-gray-800 mb-3">People Added ({additionalPeople.length}):</h3>
+                  <div className="space-y-2">
+                    {additionalPeople.map((person, index) => (
+                      <div key={index} className="flex justify-between items-center bg-white p-3 rounded border border-gray-300">
+                        <div>
+                          <p className="font-bold">{person.name}</p>
+                          <p className="text-sm text-gray-600">Relation: {person.relation}</p>
+                        </div>
+                        <button
+                          onClick={() => removeAdditionalPerson(index)}
+                          className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm font-bold"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-4 mb-6 bg-gray-50 p-6 rounded-lg border border-gray-200">
+                <h3 className="text-lg font-bold text-gray-800">Add Another Person</h3>
+                
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-2">Name</label>
+                  <input
+                    type="text"
+                    value={tempPerson.name}
+                    onChange={(e) => setTempPerson({ ...tempPerson, name: e.target.value })}
+                    placeholder="Enter person's name"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-2">Relation</label>
+                  <select
+                    value={tempPerson.relation}
+                    onChange={(e) => setTempPerson({ ...tempPerson, relation: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="">Select Relation</option>
+                    <option value="Friend">Friend</option>
+                    <option value="Family">Family</option>
+                    <option value="Colleague">Colleague</option>
+                    <option value="Spouse">Spouse</option>
+                    <option value="Child">Child</option>
+                    <option value="Parent">Parent</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <button
+                  onClick={addAdditionalPerson}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition"
+                >
+                  + Add Person
+                </button>
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button
+                  onClick={submitVisitorRegistration}
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition text-lg"
+                >
+                  ✓ Complete Registration
+                </button>
+                <button
+                  onClick={() => setShowAddMore(false)}
+                  className="px-6 bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 rounded-lg transition"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => {
+                    resetForm();
+                    setScreen('home');
+                  }}
+                  className="px-6 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen bg-gray-100 p-4 md:p-8">
         <div className="max-w-2xl mx-auto">
@@ -463,12 +636,21 @@ export default function VisitorManagementApp() {
               </div>
             )}
 
+            {Object.keys(formErrors).length > 0 && (
+              <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+                <p className="font-bold">Please fix errors:</p>
+                <ul className="list-disc list-inside mt-2 text-sm">
+                  {Object.entries(formErrors).map(([key, value]) => (
+                    <li key={key}>{value}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-gray-700 font-semibold mb-2">
-                    Full Name *
-                  </label>
+                  <label className="block text-gray-700 font-semibold mb-2">Full Name *</label>
                   <input
                     type="text"
                     name="name"
@@ -479,13 +661,10 @@ export default function VisitorManagementApp() {
                     }`}
                     placeholder="Enter your full name"
                   />
-                  {formErrors.name && <p className="text-red-500 text-sm mt-1">{formErrors.name}</p>}
                 </div>
 
                 <div>
-                  <label className="block text-gray-700 font-semibold mb-2">
-                    Mobile Number *
-                  </label>
+                  <label className="block text-gray-700 font-semibold mb-2">Mobile Number *</label>
                   <input
                     type="tel"
                     name="mobile"
@@ -496,13 +675,10 @@ export default function VisitorManagementApp() {
                     }`}
                     placeholder="10-digit number"
                   />
-                  {formErrors.mobile && <p className="text-red-500 text-sm mt-1">{formErrors.mobile}</p>}
                 </div>
 
                 <div>
-                  <label className="block text-gray-700 font-semibold mb-2">
-                    Email Address *
-                  </label>
+                  <label className="block text-gray-700 font-semibold mb-2">Email Address *</label>
                   <input
                     type="email"
                     name="email"
@@ -513,13 +689,30 @@ export default function VisitorManagementApp() {
                     }`}
                     placeholder="your@email.com"
                   />
-                  {formErrors.email && <p className="text-red-500 text-sm mt-1">{formErrors.email}</p>}
                 </div>
 
                 <div>
-                  <label className="block text-gray-700 font-semibold mb-2">
-                    Person to Meet *
-                  </label>
+                  <label className="block text-gray-700 font-semibold mb-2">Relation *</label>
+                  <select
+                    name="relation"
+                    value={formData.relation}
+                    onChange={handleInputChange}
+                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500 ${
+                      formErrors.relation ? 'border-red-500' : 'border-gray-300'
+                    }`}
+                  >
+                    <option value="">Select Relation</option>
+                    <option value="Friend">Friend</option>
+                    <option value="Family">Family</option>
+                    <option value="Business">Business</option>
+                    <option value="Client">Client</option>
+                    <option value="Partner">Partner</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-2">Person to Meet *</label>
                   <input
                     type="text"
                     name="whomToMeet"
@@ -530,13 +723,10 @@ export default function VisitorManagementApp() {
                     }`}
                     placeholder="Name of person"
                   />
-                  {formErrors.whomToMeet && <p className="text-red-500 text-sm mt-1">{formErrors.whomToMeet}</p>}
                 </div>
 
                 <div>
-                  <label className="block text-gray-700 font-semibold mb-2">
-                    Company *
-                  </label>
+                  <label className="block text-gray-700 font-semibold mb-2">Company *</label>
                   <input
                     type="text"
                     name="company"
@@ -547,13 +737,10 @@ export default function VisitorManagementApp() {
                     }`}
                     placeholder="Your company"
                   />
-                  {formErrors.company && <p className="text-red-500 text-sm mt-1">{formErrors.company}</p>}
                 </div>
 
                 <div>
-                  <label className="block text-gray-700 font-semibold mb-2">
-                    Purpose of Visit *
-                  </label>
+                  <label className="block text-gray-700 font-semibold mb-2">Purpose of Visit *</label>
                   <input
                     type="text"
                     name="purpose"
@@ -564,18 +751,19 @@ export default function VisitorManagementApp() {
                     }`}
                     placeholder="Reason for visit"
                   />
-                  {formErrors.purpose && <p className="text-red-500 text-sm mt-1">{formErrors.purpose}</p>}
                 </div>
               </div>
 
               <div className="pt-4 flex gap-3">
                 <button
+                  type="button"
                   onClick={handleSubmit}
                   className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition text-lg"
                 >
                   Submit Registration
                 </button>
                 <button
+                  type="button"
                   onClick={() => setScreen('home')}
                   className="px-6 bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 rounded-lg transition"
                 >
@@ -589,158 +777,7 @@ export default function VisitorManagementApp() {
     );
   }
 
-  // Admin Settings Screen (moved out so it can be reached)
-  if (screen === 'admin-settings') {
-    // If not logged in, show the admin login UI (so the user can login first)
-    if (!isAdminLoggedIn) {
-      return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Admin Login</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-gray-700 font-semibold mb-2">Password</label>
-                <input
-                  type="password"
-                  value={adminLoginAttempt}
-                  onChange={(e) => setAdminLoginAttempt(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-                  placeholder="Enter admin password"
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      if (adminLoginAttempt === adminPassword) {
-                        setIsAdminLoggedIn(true);
-                        setAdminLoginAttempt('');
-                        setScreen('admin-settings');
-                      } else {
-                        alert('Invalid password');
-                        setAdminLoginAttempt('');
-                      }
-                    }
-                  }}
-                />
-              </div>
-              <button
-                onClick={() => {
-                  if (adminLoginAttempt === adminPassword) {
-                    setIsAdminLoggedIn(true);
-                    setAdminLoginAttempt('');
-                    setScreen('admin-settings');
-                  } else {
-                    alert('Invalid password');
-                    setAdminLoginAttempt('');
-                  }
-                }}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition"
-              >
-                Login
-              </button>
-              <button
-                onClick={() => setScreen('home')}
-                className="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition"
-              >
-                Back
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // Admin Settings (user is logged in)
-    return (
-      <div className="min-h-screen bg-gray-100 p-4 md:p-8">
-        <div className="max-w-2xl mx-auto">
-          <button
-            onClick={() => setScreen('admin')}
-            className="mb-4 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded flex items-center gap-2"
-          >
-            <Home size={18} />
-            Back to Dashboard
-          </button>
-
-          <div className="bg-white rounded-lg shadow-lg p-6 md:p-8">
-            <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">App Settings</h2>
-
-            {settingsSaved && (
-              <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded">
-                ✓ Settings saved successfully!
-              </div>
-            )}
-
-            <div className="space-y-6">
-              <div>
-                <label className="block text-gray-700 font-semibold mb-2">Company Name / Header</label>
-                <input
-                  type="text"
-                  name="companyName"
-                  value={settingsForm.companyName}
-                  onChange={handleSettingsChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-lg"
-                  placeholder="e.g., Welcome to epay Australia"
-                />
-                <p className="text-gray-500 text-sm mt-2">This will be displayed as the main title on the home screen</p>
-              </div>
-
-              <div>
-                <label className="block text-gray-700 font-semibold mb-2">Subtitle</label>
-                <input
-                  type="text"
-                  name="subtitle"
-                  value={settingsForm.subtitle}
-                  onChange={handleSettingsChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-lg"
-                  placeholder="e.g., Visitors please sign in"
-                />
-                <p className="text-gray-500 text-sm mt-2">This will be displayed below the main title</p>
-              </div>
-
-              <div>
-                <label className="block text-gray-700 font-semibold mb-2 flex items-center gap-2">
-                  <Mail size={18} />
-                  Notification Email Address
-                </label>
-                <input
-                  type="email"
-                  name="notificationEmail"
-                  value={settingsForm.notificationEmail}
-                  onChange={handleSettingsChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-lg"
-                  placeholder="admin@example.com"
-                />
-                <p className="text-gray-500 text-sm mt-2">Visitor check-in emails will be sent to this address. Current: <span className="font-semibold">{settingsForm.notificationEmail}</span></p>
-              </div>
-
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-blue-700 text-sm font-semibold">ℹ️ Email System</p>
-                <p className="text-blue-600 text-sm mt-2">When a visitor submits their registration, an email notification will be automatically sent to the configured email address with all their d[...]
-              </div>
-
-              <div className="pt-4 flex gap-3">
-                <button
-                  onClick={() => saveSettings(settingsForm)}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition"
-                >
-                  Save Settings
-                </button>
-                <button
-                  onClick={() => {
-                    setSettingsForm(settings);
-                    setScreen('admin');
-                  }}
-                  className="px-6 bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 rounded-lg transition"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Admin Screen
+  // Admin Login
   if (screen === 'admin') {
     if (!isAdminLoggedIn) {
       return (
@@ -757,14 +794,9 @@ export default function VisitorManagementApp() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
                   placeholder="Enter admin password"
                   onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      if (adminLoginAttempt === adminPassword) {
-                        setIsAdminLoggedIn(true);
-                        setAdminLoginAttempt('');
-                      } else {
-                        alert('Invalid password');
-                        setAdminLoginAttempt('');
-                      }
+                    if (e.key === 'Enter' && adminLoginAttempt === adminPassword) {
+                      setIsAdminLoggedIn(true);
+                      setAdminLoginAttempt('');
                     }
                   }}
                 />
@@ -776,7 +808,6 @@ export default function VisitorManagementApp() {
                     setAdminLoginAttempt('');
                   } else {
                     alert('Invalid password');
-                    setAdminLoginAttempt('');
                   }
                 }}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition"
@@ -795,6 +826,62 @@ export default function VisitorManagementApp() {
       );
     }
 
+    // Admin Settings
+    if (screen === 'admin-settings') {
+      return (
+        <div className="min-h-screen bg-white p-8">
+          <button
+            onClick={() => setScreen('admin')}
+            className="mb-6 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded font-bold text-lg"
+          >
+            ← Back
+          </button>
+
+          <h1 className="text-4xl font-bold text-black mb-8">Settings</h1>
+
+          {settingsSaved && (
+            <div className="mb-6 p-4 bg-green-300 text-black rounded font-bold text-lg">
+              ✓ Settings Saved!
+            </div>
+          )}
+
+          <div className="mb-10 pb-10 border-b-2 border-gray-400">
+            <h2 className="text-2xl font-bold text-black mb-2">Maximum Visitors Allowed</h2>
+            <p className="text-gray-700 mb-4">Maximum visitors at same time</p>
+            <input
+              type="number"
+              name="maxVisitors"
+              value={settingsForm.maxVisitors}
+              onChange={handleSettingsChange}
+              min="1"
+              className="w-full px-4 py-3 border-2 border-gray-400 rounded text-lg text-black bg-white"
+            />
+            <p className="text-black font-bold mt-3 text-lg">Current: {settingsForm.maxVisitors}</p>
+          </div>
+
+          <div className="flex gap-4">
+            <button
+              type="button"
+              onClick={() => saveSettings(settingsForm)}
+              className="bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded font-bold text-lg"
+            >
+              Save Settings
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSettingsForm(settings);
+                setScreen('admin');
+              }}
+              className="bg-gray-600 hover:bg-gray-700 text-white px-8 py-4 rounded font-bold text-lg"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     // Admin Dashboard
     return (
       <div className="min-h-screen bg-gray-100 p-4 md:p-8">
@@ -802,39 +889,46 @@ export default function VisitorManagementApp() {
           <div className="flex justify-between items-center mb-8">
             <div>
               <h1 className="text-3xl font-bold text-gray-800">Admin Dashboard</h1>
-              <p className="text-gray-600">Total Visitors: {visitors.length}</p>
+              <p className="text-gray-600">
+                Primary: {visitors.length} | Inside: {visitors.filter(v => !v.checkOutTime).length}/{settings.maxVisitors} | Total: {visitors.reduce((t, v) => t + 1 + (v.additionalPeople?.length || 0), 0)}
+              </p>
             </div>
             <button
               onClick={() => {
                 setIsAdminLoggedIn(false);
                 setScreen('home');
               }}
-              className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg flex items-center gap-2 font-bold"
+              className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 font-bold"
             >
-              <LogOut size={18} />
+              <LogOut size={20} />
               Sign Out
             </button>
           </div>
 
-          <div className="bg-white rounded-lg shadow-lg p-6 mb-4">
-            <div className="flex flex-wrap gap-3">
+          <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+            <div className="flex flex-wrap gap-4">
               <button
-                onClick={downloadCSV}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-bold"
+                type="button"
+                onClick={() => downloadCSV()}
+                className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold text-base flex items-center gap-2"
               >
-                <Download size={18} />
+                <Download size={20} />
                 Download CSV
               </button>
+
               <button
+                type="button"
                 onClick={() => setScreen('admin-settings')}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-bold"
+                className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-bold text-base flex items-center gap-2"
               >
-                <Settings size={18} />
+                <Settings size={20} />
                 Settings
               </button>
+              
               <button
+                type="button"
                 onClick={() => setScreen('home')}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold text-base"
               >
                 Back Home
               </button>
@@ -863,6 +957,10 @@ export default function VisitorManagementApp() {
                       <p className="font-bold">{visitor.email}</p>
                     </div>
                     <div>
+                      <p className="text-gray-600 text-sm">Relation</p>
+                      <p className="font-bold">{visitor.relation}</p>
+                    </div>
+                    <div>
                       <p className="text-gray-600 text-sm">Company</p>
                       <p className="font-bold">{visitor.company}</p>
                     </div>
@@ -885,6 +983,20 @@ export default function VisitorManagementApp() {
                       </p>
                     </div>
                   </div>
+
+                  {visitor.additionalPeople && visitor.additionalPeople.length > 0 && (
+                    <div className="mb-4 p-4 bg-blue-50 rounded border border-blue-200">
+                      <p className="font-bold text-gray-800 mb-2">Additional People ({visitor.additionalPeople.length}):</p>
+                      <div className="space-y-1">
+                        {visitor.additionalPeople.map((person, idx) => (
+                          <p key={idx} className="text-gray-700 text-sm">
+                            • {person.name} <span className="text-gray-600">({person.relation})</span>
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex gap-2 pt-4 border-t">
                     {!visitor.checkOutTime && (
                       <button
