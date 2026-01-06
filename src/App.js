@@ -589,6 +589,157 @@ export default function VisitorManagementApp() {
     );
   }
 
+  // Admin Settings Screen (moved out so it can be reached)
+  if (screen === 'admin-settings') {
+    // If not logged in, show the admin login UI (so the user can login first)
+    if (!isAdminLoggedIn) {
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full">
+            <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Admin Login</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-gray-700 font-semibold mb-2">Password</label>
+                <input
+                  type="password"
+                  value={adminLoginAttempt}
+                  onChange={(e) => setAdminLoginAttempt(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                  placeholder="Enter admin password"
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      if (adminLoginAttempt === adminPassword) {
+                        setIsAdminLoggedIn(true);
+                        setAdminLoginAttempt('');
+                        setScreen('admin-settings');
+                      } else {
+                        alert('Invalid password');
+                        setAdminLoginAttempt('');
+                      }
+                    }
+                  }}
+                />
+              </div>
+              <button
+                onClick={() => {
+                  if (adminLoginAttempt === adminPassword) {
+                    setIsAdminLoggedIn(true);
+                    setAdminLoginAttempt('');
+                    setScreen('admin-settings');
+                  } else {
+                    alert('Invalid password');
+                    setAdminLoginAttempt('');
+                  }
+                }}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition"
+              >
+                Login
+              </button>
+              <button
+                onClick={() => setScreen('home')}
+                className="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition"
+              >
+                Back
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Admin Settings (user is logged in)
+    return (
+      <div className="min-h-screen bg-gray-100 p-4 md:p-8">
+        <div className="max-w-2xl mx-auto">
+          <button
+            onClick={() => setScreen('admin')}
+            className="mb-4 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded flex items-center gap-2"
+          >
+            <Home size={18} />
+            Back to Dashboard
+          </button>
+
+          <div className="bg-white rounded-lg shadow-lg p-6 md:p-8">
+            <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">App Settings</h2>
+
+            {settingsSaved && (
+              <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded">
+                ✓ Settings saved successfully!
+              </div>
+            )}
+
+            <div className="space-y-6">
+              <div>
+                <label className="block text-gray-700 font-semibold mb-2">Company Name / Header</label>
+                <input
+                  type="text"
+                  name="companyName"
+                  value={settingsForm.companyName}
+                  onChange={handleSettingsChange}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-lg"
+                  placeholder="e.g., Welcome to epay Australia"
+                />
+                <p className="text-gray-500 text-sm mt-2">This will be displayed as the main title on the home screen</p>
+              </div>
+
+              <div>
+                <label className="block text-gray-700 font-semibold mb-2">Subtitle</label>
+                <input
+                  type="text"
+                  name="subtitle"
+                  value={settingsForm.subtitle}
+                  onChange={handleSettingsChange}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-lg"
+                  placeholder="e.g., Visitors please sign in"
+                />
+                <p className="text-gray-500 text-sm mt-2">This will be displayed below the main title</p>
+              </div>
+
+              <div>
+                <label className="block text-gray-700 font-semibold mb-2 flex items-center gap-2">
+                  <Mail size={18} />
+                  Notification Email Address
+                </label>
+                <input
+                  type="email"
+                  name="notificationEmail"
+                  value={settingsForm.notificationEmail}
+                  onChange={handleSettingsChange}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-lg"
+                  placeholder="admin@example.com"
+                />
+                <p className="text-gray-500 text-sm mt-2">Visitor check-in emails will be sent to this address. Current: <span className="font-semibold">{settingsForm.notificationEmail}</span></p>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-blue-700 text-sm font-semibold">ℹ️ Email System</p>
+                <p className="text-blue-600 text-sm mt-2">When a visitor submits their registration, an email notification will be automatically sent to the configured email address with all their d[...]
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button
+                  onClick={() => saveSettings(settingsForm)}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition"
+                >
+                  Save Settings
+                </button>
+                <button
+                  onClick={() => {
+                    setSettingsForm(settings);
+                    setScreen('admin');
+                  }}
+                  className="px-6 bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 rounded-lg transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Admin Screen
   if (screen === 'admin') {
     if (!isAdminLoggedIn) {
@@ -638,100 +789,6 @@ export default function VisitorManagementApp() {
               >
                 Back
               </button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // Admin Settings
-    if (screen === 'admin-settings') {
-      return (
-        <div className="min-h-screen bg-gray-100 p-4 md:p-8">
-          <div className="max-w-2xl mx-auto">
-            <button
-              onClick={() => setScreen('admin')}
-              className="mb-4 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded flex items-center gap-2"
-            >
-              <Home size={18} />
-              Back to Dashboard
-            </button>
-
-            <div className="bg-white rounded-lg shadow-lg p-6 md:p-8">
-              <h2 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">App Settings</h2>
-
-              {settingsSaved && (
-                <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded">
-                  ✓ Settings saved successfully!
-                </div>
-              )}
-
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-gray-700 font-semibold mb-2">Company Name / Header</label>
-                  <input
-                    type="text"
-                    name="companyName"
-                    value={settingsForm.companyName}
-                    onChange={handleSettingsChange}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-lg"
-                    placeholder="e.g., Welcome to epay Australia"
-                  />
-                  <p className="text-gray-500 text-sm mt-2">This will be displayed as the main title on the home screen</p>
-                </div>
-
-                <div>
-                  <label className="block text-gray-700 font-semibold mb-2">Subtitle</label>
-                  <input
-                    type="text"
-                    name="subtitle"
-                    value={settingsForm.subtitle}
-                    onChange={handleSettingsChange}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-lg"
-                    placeholder="e.g., Visitors please sign in"
-                  />
-                  <p className="text-gray-500 text-sm mt-2">This will be displayed below the main title</p>
-                </div>
-
-                <div>
-                  <label className="block text-gray-700 font-semibold mb-2 flex items-center gap-2">
-                    <Mail size={18} />
-                    Notification Email Address
-                  </label>
-                  <input
-                    type="email"
-                    name="notificationEmail"
-                    value={settingsForm.notificationEmail}
-                    onChange={handleSettingsChange}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-lg"
-                    placeholder="admin@example.com"
-                  />
-                  <p className="text-gray-500 text-sm mt-2">Visitor check-in emails will be sent to this address. Current: <span className="font-semibold">{settingsForm.notificationEmail}</span></p>
-                </div>
-
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <p className="text-blue-700 text-sm font-semibold">ℹ️ Email System</p>
-                  <p className="text-blue-600 text-sm mt-2">When a visitor submits their registration, an email notification will be automatically sent to the configured email address with all their details.</p>
-                </div>
-
-                <div className="pt-4 flex gap-3">
-                  <button
-                    onClick={() => saveSettings(settingsForm)}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition"
-                  >
-                    Save Settings
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSettingsForm(settings);
-                      setScreen('admin');
-                    }}
-                    className="px-6 bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 rounded-lg transition"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
         </div>
